@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "github-issue-triage"
+version = "0.1.0"
+description = "AI-powered triage reports for open source GitHub repositories"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "typer>=0.12.3",
+    "httpx>=0.27.0",
+    "litellm>=1.40.0",
+    "pydantic>=2.7.0",
+    "python-dotenv>=1.0.1",
+    "rich>=13.7.1",
+    "beautifulsoup4>=4.12.3",
+]
+
+[project.scripts]
+triage = "triage.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.7",
+    "pylint>=3.2.0",
+    "pytest-httpx>=0.30.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/triage"]
+
+[tool.pylint.main]
+source-roots = ["src"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "too-many-statements",
+    "too-many-branches",
+    "wrong-import-position",   # llm.py sets LITELLM_TELEMETRY before import (intentional)
+    "broad-exception-caught",  # graceful-degradation fallbacks: return defaults, never crash
+    "raise-missing-from",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
