@@ -28,6 +28,5 @@ htmlcov/
 .ruff_cache/
 .mypy_cache/
 .pytype_cache/
-.github/
 
 
