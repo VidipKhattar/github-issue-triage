@@ -5,7 +5,7 @@ Point it at any public GitHub repository and get a structured triage brief: top 
 ## Setup
 
 ```bash
-git clone https://github.com/yourname/github-issue-triage
+git clone https://github.com/VidipKhattar/github-issue-triage
 cd github-issue-triage
 python -m venv .venv && source .venv/bin/activate
 cp .env.example .env          # add your API key(s) and optional GitHub token
@@ -72,23 +72,6 @@ LITELLM_MODEL=gpt-4o-mini
 # Gemini
 LITELLM_MODEL=gemini/gemini-1.5-pro
 ```
-
-## Cost
-
-Each run makes **one LLM call**. Cost scales with the number of issues analysed — use `--dry-run` to see an estimate before spending anything.
-
-Estimates below use **claude-sonnet-4-20250514** (~180 tokens per issue):
-
-| Issues analysed | Est. tokens (in) | Est. cost |
-| --------------- | ---------------- | --------- |
-| 10              | ~2,100           | ~$0.01    |
-| 25              | ~4,800           | ~$0.02    |
-| 50              | ~9,300           | ~$0.04    |
-| 100             | ~18,300          | ~$0.06    |
-| 200             | ~36,300          | ~$0.12    |
-| 500             | ~90,300          | ~$0.28    |
-
-`gpt-4o-mini` is roughly 10× cheaper if cost is a concern.
 
 ### Tuning scope via `.env`
 

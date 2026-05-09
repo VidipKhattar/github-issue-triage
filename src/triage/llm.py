@@ -18,19 +18,17 @@ from triage.preprocessor import issues_to_llm_payload
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _console = Console(stderr=True)
 
-# Approximate pricing per million tokens (input, output) keyed by model prefix.
-_PRICING: dict[str, dict[str, float]] = {
-    "claude": {"input": 3.00, "output": 15.00},
-    "gpt": {"input": 2.50, "output": 10.00},
-    "gemini": {"input": 1.25, "output": 5.00},
-}
-
-
 def _model_pricing(model: str) -> dict[str, float]:
-    """Return pricing dict for *model* by matching against known prefixes."""
-    for prefix, pricing in _PRICING.items():
-        if model.startswith(prefix):
-            return pricing
+    """Return per-million-token pricing using LiteLLM's maintained cost database.
+
+    Falls back to Sonnet-class pricing for models not in LiteLLM's database.
+    """
+    info = litellm.model_cost.get(model, {})
+    if info:
+        return {
+            "input": info.get("input_cost_per_token", 0) * 1_000_000,
+            "output": info.get("output_cost_per_token", 0) * 1_000_000,
+        }
     return {"input": 3.00, "output": 15.00}
 
 
@@ -86,8 +84,8 @@ def _build_user_prompt(
     )
 
 
-def complete(model: str, system: str, user: str) -> tuple[str, object]:
-    """Call LLM via LiteLLM and return response text and token usage.
+def complete(model: str, system: str, user: str) -> tuple[str, object, float]:
+    """Call LLM via LiteLLM and return response text, token usage, and cost.
 
     Args:
         model: LiteLLM model string e.g. ``"claude-sonnet-4-20250514"`` or ``"gpt-4o"``.
@@ -95,8 +93,9 @@ def complete(model: str, system: str, user: str) -> tuple[str, object]:
         user: User message text.
 
     Returns:
-        Tuple of ``(response_text, usage)`` where ``usage`` has
-        ``prompt_tokens`` and ``completion_tokens`` attributes.
+        Tuple of ``(response_text, usage, cost_usd)`` where ``usage`` has
+        ``prompt_tokens`` and ``completion_tokens`` attributes and ``cost_usd``
+        is the actual call cost in dollars from LiteLLM's pricing database.
 
     Raises:
         litellm.exceptions.AuthenticationError: If the API key is invalid.
@@ -112,7 +111,8 @@ def complete(model: str, system: str, user: str) -> tuple[str, object]:
         max_tokens=8192,
         num_retries=3,
     )
-    return response.choices[0].message.content, response.usage
+    cost = litellm.completion_cost(completion_response=response)
+    return response.choices[0].message.content, response.usage, cost
 
 
 def _parse_json_from_text(text: str) -> dict:
@@ -169,13 +169,8 @@ def run_triage(
     system = _load_system_prompt(schema, focus)
     user = _build_user_prompt(repo, issues, repo_stats)
 
-    text, usage = complete(model, system, user)
+    text, usage, cost = complete(model, system, user)
 
-    pricing = _model_pricing(model)
-    cost = (
-        usage.prompt_tokens * pricing["input"]
-        + usage.completion_tokens * pricing["output"]
-    ) / 1_000_000
     _console.print(
         f"[dim]Tokens: {usage.prompt_tokens:,} in · "
         f"{usage.completion_tokens:,} out · est. cost ${cost:.4f}[/dim]"

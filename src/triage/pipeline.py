@@ -10,7 +10,6 @@ from triage.config import settings
 from triage.github import (
     check_rate_limit,
     fetch_open_issues,
-    fetch_repo_open_issue_count,
     fetch_repo_stats,
     parse_repo,
 )
@@ -115,7 +114,7 @@ def run_pipeline(
     )
 
     _console.print(f"[dim]Fetching issues from {repo_slug}…[/dim]", end=" ")
-    total_open = fetch_repo_open_issue_count(repo_url)
+    total_open = repo_stats.get("open_issues_count", 0)
     raw_issues = fetch_open_issues(repo_url, max_issues=max_issues, since_days=since_days)
     _console.print(f"[green]✓[/green] {len(raw_issues)} found{stars_suffix}")
 
