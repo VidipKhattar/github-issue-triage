@@ -73,23 +73,6 @@ LITELLM_MODEL=gpt-4o-mini
 LITELLM_MODEL=gemini/gemini-1.5-pro
 ```
 
-## Cost
-
-Each run makes **one LLM call**. Cost scales with the number of issues analysed — use `--dry-run` to see an estimate before spending anything.
-
-Estimates below use **claude-sonnet-4-20250514** (~180 tokens per issue):
-
-| Issues analysed | Est. tokens (in) | Est. cost |
-| --------------- | ---------------- | --------- |
-| 10              | ~2,100           | ~$0.01    |
-| 25              | ~4,800           | ~$0.02    |
-| 50              | ~9,300           | ~$0.04    |
-| 100             | ~18,300          | ~$0.06    |
-| 200             | ~36,300          | ~$0.12    |
-| 500             | ~90,300          | ~$0.28    |
-
-`gpt-4o-mini` is roughly 10× cheaper if cost is a concern.
-
 ### Tuning scope via `.env`
 
 Two variables directly control how many issues are analysed per run:
