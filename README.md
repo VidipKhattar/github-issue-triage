@@ -5,7 +5,7 @@ Point it at any public GitHub repository and get a structured triage brief: top 
 ## Setup
 
 ```bash
-git clone https://github.com/yourname/github-issue-triage
+git clone https://github.com/VidipKhattar/github-issue-triage
 cd github-issue-triage
 python -m venv .venv && source .venv/bin/activate
 cp .env.example .env          # add your API key(s) and optional GitHub token
