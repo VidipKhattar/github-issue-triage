@@ -56,7 +56,10 @@ def _build_headers() -> dict[str, str]:
     Returns:
         A dict of headers suitable for passing to an ``httpx`` client.
     """
-    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
     if settings.github_token:
         headers["Authorization"] = f"Bearer {settings.github_token}"
     return headers
@@ -95,7 +98,9 @@ def check_rate_limit() -> dict[str, int]:
     """
     headers = _build_headers()
     try:
-        with httpx.Client(base_url=_API_BASE, headers=headers, timeout=_TIMEOUT) as client:
+        with httpx.Client(
+            base_url=_API_BASE, headers=headers, timeout=_TIMEOUT
+        ) as client:
             response = client.get("/rate_limit")
             response.raise_for_status()
             core = response.json()["resources"]["core"]
@@ -111,21 +116,40 @@ def check_rate_limit() -> dict[str, int]:
 def fetch_repo_stats(owner: str, repo: str) -> dict[str, Any]:
     """Fetch summary stats for a repository.
 
+    ``open_issues_count`` is retrieved from the Search API (``is:issue``) so
+    it is exact — the repo endpoint's ``open_issues_count`` field includes pull
+    requests in its count. Falls back to the repo endpoint figure if the search
+    request fails.
+
     Returns:
         Dict with ``stars``, ``forks``, ``topics``, and ``open_issues_count``.
         Returns an empty dict on any error so the caller never crashes.
     """
     headers = _build_headers()
     try:
-        with httpx.Client(base_url=_API_BASE, headers=headers, timeout=_TIMEOUT) as client:
+        with httpx.Client(
+            base_url=_API_BASE, headers=headers, timeout=_TIMEOUT
+        ) as client:
             response = client.get(f"/repos/{owner}/{repo}")
             response.raise_for_status()
             data = response.json()
+
+            # Search API gives an exact issue count (excludes PRs).
+            # per_page=1 fetches the minimum payload — only total_count matters.
+            search = client.get(
+                "/search/issues",
+                params={"q": f"repo:{owner}/{repo} is:issue state:open", "per_page": 1},
+            )
+            if search.status_code == 200:
+                open_issues_count = int(search.json().get("total_count", 0))
+            else:
+                open_issues_count = int(data.get("open_issues_count", 0))
+
             return {
                 "stars": int(data.get("stargazers_count", 0)),
                 "forks": int(data.get("forks_count", 0)),
                 "topics": list(data.get("topics", [])),
-                "open_issues_count": int(data.get("open_issues_count", 0)),
+                "open_issues_count": open_issues_count,
             }
     except Exception:  # noqa: BLE001
         return {}
@@ -165,35 +189,11 @@ def fetch_top_comments(
             params={"per_page": limit},
         )
         response.raise_for_status()
-        return [_clean_comment(c.get("body", "") or "") for c in response.json()][:limit]
+        return [_clean_comment(c.get("body", "") or "") for c in response.json()][
+            :limit
+        ]
     except Exception:  # noqa: BLE001
         return []
-
-
-def fetch_repo_open_issue_count(repo_url: str) -> int:
-    """Fetch the total open-issue count for a repository.
-
-    Uses the repo endpoint's ``open_issues_count`` field. Note that GitHub
-    includes pull requests in this figure, so the returned value is an upper
-    bound on the true issue count. Returns 0 on any non-fatal error so the
-    caller can degrade gracefully rather than crashing.
-
-    Args:
-        repo_url: Full GitHub URL or 'owner/repo' shorthand.
-
-    Returns:
-        Total open issues + PRs as reported by GitHub, or 0 if the request
-        fails.
-    """
-    owner, repo = parse_repo(repo_url)
-    headers = _build_headers()
-    try:
-        with httpx.Client(base_url=_API_BASE, headers=headers, timeout=_TIMEOUT) as client:
-            response = client.get(f"/repos/{owner}/{repo}")
-            response.raise_for_status()
-            return int(response.json().get("open_issues_count", 0))
-    except Exception:  # noqa: BLE001
-        return 0
 
 
 def fetch_open_issues(
@@ -245,7 +245,9 @@ def fetch_open_issues(
                 },
             )
             if response.status_code == 404:
-                raise ValueError(f"Repository '{owner}/{repo}' not found or is private.")
+                raise ValueError(
+                    f"Repository '{owner}/{repo}' not found or is private."
+                )
             if response.status_code == 403:
                 _check_rate_limit(response)
                 response.raise_for_status()
@@ -288,18 +290,14 @@ def _parse_raw_issue(item: dict[str, Any]) -> RawIssue:
     """
     reactions = item.get("reactions", {})
     total_reactions = (
-        reactions.get("total_count", 0)
-        if isinstance(reactions, dict)
-        else 0
+        reactions.get("total_count", 0) if isinstance(reactions, dict) else 0
     )
     labels = [
         lbl["name"] if isinstance(lbl, dict) else str(lbl)
         for lbl in item.get("labels", [])
     ]
     milestone_title = (
-        item["milestone"]["title"]
-        if isinstance(item.get("milestone"), dict)
-        else None
+        item["milestone"]["title"] if isinstance(item.get("milestone"), dict) else None
     )
     return RawIssue(
         number=item["number"],
