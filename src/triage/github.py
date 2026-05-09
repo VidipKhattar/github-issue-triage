@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import time
 import warnings
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -195,16 +196,27 @@ def fetch_repo_open_issue_count(repo_url: str) -> int:
         return 0
 
 
-def fetch_open_issues(repo_url: str, max_issues: int = 100) -> list[RawIssue]:
+def fetch_open_issues(
+    repo_url: str,
+    max_issues: int = 100,
+    since_days: int | None = None,
+) -> list[RawIssue]:
     """Fetch open issues (not PRs) from a public GitHub repo.
 
     Always requests full pages of ``_PAGE_SIZE`` items so that pages containing
     many PRs do not cause the loop to exit early. Stops once ``max_issues``
     non-PR issues have been collected or the API returns a partial page.
 
+    Because the GitHub API returns items sorted newest-first, the loop exits
+    early as soon as an item's creation date is older than ``since_days``; all
+    subsequent items are guaranteed to be even older.
+
     Args:
         repo_url: Full GitHub URL or 'owner/repo' shorthand.
         max_issues: Hard cap on returned issues.
+        since_days: When set, stop fetching once an item was created more than
+            this many days ago. Applied before the PR filter so that old PRs do
+            not mask the cutoff.
 
     Returns:
         List of RawIssue objects, newest first.
@@ -218,6 +230,7 @@ def fetch_open_issues(repo_url: str, max_issues: int = 100) -> list[RawIssue]:
     headers = _build_headers()
     issues: list[RawIssue] = []
     page = 1
+    now = datetime.now(tz=timezone.utc)
 
     with httpx.Client(base_url=_API_BASE, headers=headers, timeout=_TIMEOUT) as client:
         while len(issues) < max_issues:
@@ -246,6 +259,12 @@ def fetch_open_issues(repo_url: str, max_issues: int = 100) -> list[RawIssue]:
             for item in batch:
                 if len(issues) >= max_issues:
                     break
+                if since_days is not None:
+                    created = datetime.fromisoformat(
+                        item["created_at"].replace("Z", "+00:00")
+                    )
+                    if (now - created).days > since_days:
+                        return issues
                 # GitHub returns PRs in the issues endpoint; skip them
                 if item.get("pull_request"):
                     continue

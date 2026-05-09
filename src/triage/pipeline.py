@@ -116,7 +116,7 @@ def run_pipeline(
 
     _console.print(f"[dim]Fetching issues from {repo_slug}…[/dim]", end=" ")
     total_open = fetch_repo_open_issue_count(repo_url)
-    raw_issues = fetch_open_issues(repo_url, max_issues=max_issues)
+    raw_issues = fetch_open_issues(repo_url, max_issues=max_issues, since_days=since_days)
     _console.print(f"[green]✓[/green] {len(raw_issues)} found{stars_suffix}")
 
     if not raw_issues:
