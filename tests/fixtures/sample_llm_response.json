@@ -1,0 +1,67 @@
+{
+  "repo": "owner/repo",
+  "total_issues_analyzed": 5,
+  "summary": "The repo has two critical bugs related to authentication and one stale documentation issue. Security should be the top priority this week.",
+  "clusters": [
+    {
+      "theme": "Authentication",
+      "issue_numbers": [101, 103],
+      "summary": "Two issues related to OAuth token handling and session expiry."
+    },
+    {
+      "theme": "Documentation",
+      "issue_numbers": [104, 105],
+      "summary": "Outdated API reference and missing quickstart guide."
+    }
+  ],
+  "top_priorities": [
+    {
+      "number": 101,
+      "title": "OAuth tokens expire silently",
+      "priority": "critical",
+      "confidence": 0.92,
+      "reasoning": "Users lose sessions without warning. 15 reactions and a maintainer confirmation in comments indicate widespread impact.",
+      "category": "security",
+      "suggested_action": "Assign to auth team lead and schedule a hotfix for the next patch release."
+    },
+    {
+      "number": 103,
+      "title": "Session cookie not rotated after login",
+      "priority": "high",
+      "confidence": 0.78,
+      "reasoning": "Session fixation vulnerability. Lower confidence because reproduction steps are incomplete.",
+      "category": "security",
+      "suggested_action": "Ask reporter for a minimal reproduction case, then triage with the security team."
+    },
+    {
+      "number": 102,
+      "title": "CLI crashes on empty config file",
+      "priority": "medium",
+      "confidence": 0.85,
+      "reasoning": "Crash on a common edge case. 3 comments confirming the issue.",
+      "category": "bug",
+      "suggested_action": "Add a guard clause in config loader — good candidate for a quick fix."
+    }
+  ],
+  "stale_issues": [
+    {
+      "number": 104,
+      "title": "Update API reference for v2",
+      "reason": "No activity in 180 days. The v2 API has since shipped — this issue may be obsolete."
+    }
+  ],
+  "quick_wins": [
+    {
+      "number": 105,
+      "title": "Add quickstart guide to README",
+      "why_quick": "Well-scoped documentation task with a clear acceptance criterion. No code changes required."
+    }
+  ],
+  "duplicate_groups": [
+    {
+      "issue_numbers": [101, 103],
+      "canonical_number": 101,
+      "reasoning": "Both describe authentication token lifecycle bugs — #103 is a specific sub-case of #101."
+    }
+  ]
+}
