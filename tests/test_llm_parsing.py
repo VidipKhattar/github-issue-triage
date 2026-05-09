@@ -47,13 +47,12 @@ class TestParseJsonFromText:
         with pytest.raises(ValueError, match="no JSON object"):
             _parse_json_from_text(raw)
 
-
-def test_nested_objects_parsed(self):
-    raw = (
-        '{"repo": "a/b", "total_issues_analyzed": 1, '
-        '"clusters": [{"theme": "bugs", "issue_numbers": [1], '
-        '"summary": "one bug"}]}'
-    )
-    result = _parse_json_from_text(raw)
-    assert len(result["clusters"]) == 1
-    assert result["clusters"][0]["theme"] == "bugs"
+    def test_nested_objects_parsed(self):
+        raw = (
+            '{"repo": "a/b", "total_issues_analyzed": 1, '
+            '"clusters": [{"theme": "bugs", "issue_numbers": [1], '
+            '"summary": "one bug"}]}'
+        )
+        result = _parse_json_from_text(raw)
+        assert len(result["clusters"]) == 1
+        assert result["clusters"][0]["theme"] == "bugs"
