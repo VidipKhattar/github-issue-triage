@@ -8,9 +8,11 @@ from pathlib import Path
 
 from rich.console import Console
 
+
 from triage.llm import _parse_json_from_text
 from triage.models import TriageReport
 from triage.reporter import render_table
+import triage.reporter as mod
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "sample_llm_response.json"
 
@@ -58,8 +60,6 @@ class TestFixtureRoundTrip:
         report = TriageReport.model_validate(data)
         buf = StringIO()
         console = Console(file=buf, force_terminal=True, width=120)
-        # Monkey-patch the module-level console for this test
-        import triage.reporter as mod
         original = mod.console
         mod.console = console
         try:
