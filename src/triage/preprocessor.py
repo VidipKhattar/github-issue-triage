@@ -92,11 +92,7 @@ def preprocess_issues(
 
     for issue in issues[:max_issues]:
         raw_body = issue.body or ""
-        cleaned = clean_text(raw_body)
-        snippet = cleaned[:_SNIPPET_CHARS]
-        if len(cleaned) > _SNIPPET_CHARS:
-            snippet += "…"
-
+        cleaned_snippet = clean_text(raw_body, _SNIPPET_CHARS)
         days_old = _days_since(issue.created_at)
         days_since_update = _days_since(issue.updated_at)
 
@@ -109,7 +105,7 @@ def preprocess_issues(
             ProcessedIssue(
                 number=issue.number,
                 title=issue.title,
-                body_snippet=snippet,
+                body_snippet=cleaned_snippet,
                 created_at=issue.created_at,
                 days_old=days_old,
                 days_since_update=days_since_update,
@@ -118,9 +114,13 @@ def preprocess_issues(
                 labels=issue.labels,
                 html_url=issue.html_url,
                 is_stale=days_since_update >= stale_days,
-                has_good_first_issue_label=bool(lower_labels & _GOOD_FIRST_ISSUE_LABELS),
+                has_good_first_issue_label=bool(
+                    lower_labels & _GOOD_FIRST_ISSUE_LABELS
+                ),
                 is_assigned=issue.is_assigned,
-                reporter_type=_REPORTER_TYPE_MAP.get(issue.author_association, "community"),
+                reporter_type=_REPORTER_TYPE_MAP.get(
+                    issue.author_association, "community"
+                ),
                 milestone=issue.milestone,
             )
         )

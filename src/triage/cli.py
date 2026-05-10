@@ -48,11 +48,15 @@ def run(
     ] = False,
     output: Annotated[
         str,
-        typer.Option("--output", "-o", help="Output format: 'table' (default) or 'json'."),
+        typer.Option(
+            "--output", "-o", help="Output format: 'table' (default) or 'json'."
+        ),
     ] = "table",
     stale_days: Annotated[
         int,
-        typer.Option("--stale-days", "-s", help="Days without update before flagging stale."),
+        typer.Option(
+            "--stale-days", "-s", help="Days without update before flagging stale."
+        ),
     ] = 90,
     provider: Annotated[
         str | None,
@@ -71,7 +75,9 @@ def run(
 ) -> None:
     """Fetch open issues from REPO_URL and produce a structured triage report."""
     if output not in ("table", "json"):
-        _err.print(f"[red]Error:[/red] --output must be 'table' or 'json', got '{output}'.")
+        _err.print(
+            f"[red]Error:[/red] --output must be 'table' or 'json', got '{output}'."
+        )
         raise typer.Exit(1)
 
     since_days = since if since is not None else settings.since_default
