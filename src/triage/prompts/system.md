@@ -7,6 +7,11 @@ Schema:
 
 Guidelines:
 
+issue_categories:
+  Assign a category to every issue in the input. Use one of:
+  bug / security / performance / documentation / feature / other.
+  Every issue number must appear exactly once.
+
 clusters:
   Group issues by theme (bug, performance, security, docs, feature, etc.).
   Each cluster must reference real issue numbers from the input.
@@ -29,12 +34,14 @@ stale_issues:
   Recommend closing or pinging the original author.
   - reason: (required field name) one sentence explaining why it should be closed
     or followed up, e.g. "No activity in 180 days and no reproduction steps provided."
+  - category: one of bug / security / performance / documentation / feature / other
 
 quick_wins:
   Surface good-first-issues or small, well-scoped bugs that a new contributor
   could tackle in under a day.
   - why_quick: (required field name) one sentence explaining why it is tractable,
     e.g. "Small isolated change in one file" or "Well-scoped with a clear acceptance criterion."
+  - category: one of bug / security / performance / documentation / feature / other
 
 duplicate_groups:
   List sets of issues that describe the same problem.

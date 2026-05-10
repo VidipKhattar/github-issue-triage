@@ -137,6 +137,7 @@ class StaleIssue(BaseModel):
     number: int
     title: str
     reason: str = ""
+    category: str = ""
     html_url: str = ""
     created_at: str = ""
 
@@ -165,6 +166,7 @@ class QuickWin(BaseModel):
     number: int
     title: str
     why_quick: str = ""
+    category: str = ""
     html_url: str = ""
     created_at: str = ""
 
@@ -177,6 +179,19 @@ class QuickWin(BaseModel):
                     data["why_quick"] = data[alt]
                     break
         return data
+
+
+class IssueCategory(BaseModel):
+    """Category assignment for a single issue.
+
+    Attributes:
+        number: GitHub issue number.
+        category: Thematic category — one of bug, security, performance,
+            documentation, feature, or other.
+    """
+
+    number: int
+    category: str
 
 
 class DuplicateGroup(BaseModel):
@@ -217,4 +232,5 @@ class TriageReport(BaseModel):
     stale_issues: list[StaleIssue] = Field(default_factory=list)
     quick_wins: list[QuickWin] = Field(default_factory=list)
     duplicate_groups: list[DuplicateGroup] = Field(default_factory=list)
+    issue_categories: list[IssueCategory] = Field(default_factory=list)
     summary: str = ""
