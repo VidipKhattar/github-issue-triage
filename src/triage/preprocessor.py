@@ -44,7 +44,7 @@ def clean_text(text: str, truncate: int = 0) -> str:
     text = re.sub(r"`[^`]+`", " ", text)
     plain = BeautifulSoup(text, "html.parser").get_text(separator=" ")
     plain = re.sub(r"\s+", " ", plain).strip()
-    if truncate > 0 and len(plain) > truncate:
+    if 0 < truncate < len(plain):
         return plain[:truncate] + "…"
     return plain
 

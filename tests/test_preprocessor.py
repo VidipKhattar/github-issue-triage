@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from triage.models import RawIssue
 from triage.preprocessor import (
     _days_since,
-    _strip_html_and_code,
+    clean_text,
     issues_to_llm_payload,
     preprocess_issues,
 )
@@ -40,35 +40,47 @@ def _make_issue(
     )
 
 
-class TestStripHtmlAndCode:
+class TestCleanText:
     def test_strips_html_tags(self):
-        result = _strip_html_and_code("<p>Hello <b>world</b></p>")
+        result = clean_text("<p>Hello <b>world</b></p>")
         assert "<p>" not in result
         assert "Hello" in result
         assert "world" in result
 
     def test_strips_fenced_code_blocks(self):
         text = "Before\n```python\nprint('hello')\n```\nAfter"
-        result = _strip_html_and_code(text)
+        result = clean_text(text)
         assert "print" not in result
         assert "Before" in result
         assert "After" in result
 
     def test_strips_inline_code(self):
-        result = _strip_html_and_code("Call `my_function()` to do it")
+        result = clean_text("Call `my_function()` to do it")
         assert "my_function" not in result
         assert "Call" in result
 
     def test_collapses_whitespace(self):
-        result = _strip_html_and_code("Hello    \n\n   world")
+        result = clean_text("Hello    \n\n   world")
         assert "  " not in result
 
     def test_empty_string(self):
-        assert _strip_html_and_code("") == ""
+        assert clean_text("") == ""
 
     def test_plain_text_unchanged(self):
-        result = _strip_html_and_code("Plain text with no markup.")
+        result = clean_text("Plain text with no markup.")
         assert result == "Plain text with no markup."
+
+    def test_truncates_with_ellipsis(self):
+        result = clean_text("Hello world", truncate=5)
+        assert result == "Hello…"
+
+    def test_no_truncation_when_short(self):
+        result = clean_text("Hi", truncate=10)
+        assert result == "Hi"
+
+    def test_no_truncation_when_zero(self):
+        result = clean_text("Hello world", truncate=0)
+        assert result == "Hello world"
 
 
 class TestDaysSince:

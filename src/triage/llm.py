@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import tenacity
+import tenacity  # noqa: F401  # pylint: disable=unused-import
 
 os.environ["LITELLM_TELEMETRY"] = "False"
 
