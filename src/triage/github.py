@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import re
 import time
-import warnings
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
 
 from triage.config import settings
 from triage.models import RawIssue
-
-warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 _API_BASE = "https://api.github.com"
 _PAGE_SIZE = 100
@@ -155,15 +151,6 @@ def fetch_repo_stats(owner: str, repo: str) -> dict[str, Any]:
         return {}
 
 
-def _clean_comment(text: str) -> str:
-    """Strip HTML, fenced code blocks, inline code, and truncate to 200 chars."""
-    text = re.sub(r"```[\s\S]*?```", " ", text)
-    text = re.sub(r"`[^`]+`", " ", text)
-    plain = BeautifulSoup(text, "html.parser").get_text(separator=" ")
-    plain = re.sub(r"\s+", " ", plain).strip()
-    return plain[:200] + "…" if len(plain) > 200 else plain
-
-
 def fetch_top_comments(
     client: httpx.Client,
     owner: str,
@@ -171,7 +158,7 @@ def fetch_top_comments(
     issue_number: int,
     limit: int = 3,
 ) -> list[str]:
-    """Fetch the top N comments for an issue, cleaned and truncated.
+    """Fetch the top N raw comment bodies for an issue.
 
     Args:
         client: An open httpx.Client (caller is responsible for lifecycle).
@@ -181,7 +168,7 @@ def fetch_top_comments(
         limit: Maximum number of comments to return.
 
     Returns:
-        List of cleaned, truncated comment strings. Empty list on any error.
+        List of raw comment body strings. Empty list on any error.
     """
     try:
         response = client.get(
@@ -189,9 +176,7 @@ def fetch_top_comments(
             params={"per_page": limit},
         )
         response.raise_for_status()
-        return [_clean_comment(c.get("body", "") or "") for c in response.json()][
-            :limit
-        ]
+        return [c.get("body", "") or "" for c in response.json()][:limit]
     except Exception:  # noqa: BLE001
         return []
 
