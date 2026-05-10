@@ -177,7 +177,7 @@ def run_triage(
 
     _console.print(
         f"[dim]Tokens: {usage.prompt_tokens:,} in · "
-        f"{usage.completion_tokens:,} out · est. cost ${cost:.4f}[/dim]"
+        f"{usage.completion_tokens:,} out · cost ${cost:.4f}[/dim]"
     )
 
     data = _parse_json_from_text(text)
