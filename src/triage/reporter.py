@@ -194,6 +194,24 @@ def render_table(report: TriageReport) -> None:
         console.print(dup_table)
         console.print(_LEGEND)
 
+    # --- Category Breakdown ---
+    counts: dict[str, int] = {}
+    for ic in report.issue_categories:
+        if ic.category:
+            counts[ic.category] = counts.get(ic.category, 0) + 1
+    if counts:
+        cat_table = Table(
+            title=f"Issue Breakdown by Category{_AI_MARKER}",
+            box=box.SIMPLE_HEAD,
+            expand=True,
+        )
+        cat_table.add_column("Category", style="bold", width=20)
+        cat_table.add_column("Count", justify="right", width=8)
+        for category, count in sorted(counts.items(), key=lambda x: x[1], reverse=True):
+            cat_table.add_row(category, str(count))
+        console.print(cat_table)
+        console.print(_LEGEND)
+
     console.print()
 
 

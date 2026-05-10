@@ -13,6 +13,18 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 class Settings:
     """Central config object; all values read from environment at access time."""
 
+    _PROVIDER_ENV_KEYS: dict[str, str] = {
+        "claude": "MODEL_CLAUDE",
+        "gpt": "MODEL_OPENAI",
+        "gemini": "MODEL_GEMINI",
+    }
+
+    _PROVIDER_DEFAULTS: dict[str, str] = {
+        "claude": "claude-sonnet-4-20250514",
+        "gpt": "gpt-4o",
+        "gemini": "gemini/gemini-1.5-pro",
+    }
+
     @property
     def github_token(self) -> str | None:
         """Optional GitHub personal access token from ``GITHUB_TOKEN``."""
@@ -29,13 +41,42 @@ class Settings:
         return int(os.getenv("MAX_ISSUES", "500"))
 
     @property
-    def litellm_model(self) -> str:
-        """LiteLLM model string from ``LITELLM_MODEL``.
+    def default_provider(self) -> str:
+        """Active provider from ``DEFAULT_PROVIDER``, defaulting to ``claude``."""
+        return os.getenv("DEFAULT_PROVIDER", "claude").lower()
 
-        Controls which LLM and provider are used. Examples:
-            ``claude-sonnet-4-20250514``, ``gpt-4o``, ``gemini/gemini-1.5-pro``
+    def model_for_provider(self, provider: str) -> str:
+        """Return the LiteLLM model string for the given provider shorthand.
+
+        Reads the provider-specific env var (e.g. ``MODEL_CLAUDE``) and falls
+        back to a sensible default when not set.
+
+        Args:
+            provider: One of ``"claude"``, ``"gpt"``, or ``"gemini"``.
+
+        Returns:
+            A LiteLLM-compatible model string.
+
+        Raises:
+            ValueError: If ``provider`` is not a recognised shorthand.
         """
-        return os.getenv("LITELLM_MODEL", "claude-sonnet-4-20250514")
+        if provider not in self._PROVIDER_ENV_KEYS:
+            raise ValueError(
+                f"Unknown provider '{provider}'. Choose from: "
+                + ", ".join(self._PROVIDER_ENV_KEYS)
+            )
+        env_key = self._PROVIDER_ENV_KEYS[provider]
+        return os.getenv(env_key, self._PROVIDER_DEFAULTS[provider])
+
+    @property
+    def litellm_model(self) -> str:
+        """LiteLLM model string resolved from the default provider.
+
+        Equivalent to ``model_for_provider(default_provider)``. Override the
+        active model by setting ``DEFAULT_PROVIDER`` and the corresponding
+        ``MODEL_CLAUDE`` / ``MODEL_OPENAI`` / ``MODEL_GEMINI`` env vars.
+        """
+        return self.model_for_provider(self.default_provider)
 
 
 settings = Settings()

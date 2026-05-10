@@ -1,9 +1,11 @@
-"""Orchestrates fetch → preprocess → LLM call → report."""
+"""Orchestrate the triage pipeline: fetch → preprocess → LLM call → report."""
 
 from __future__ import annotations
 
+import json
 import time
 
+import litellm
 from rich.console import Console
 
 from triage.config import settings
@@ -13,20 +15,34 @@ from triage.github import (
     fetch_repo_stats,
     parse_repo,
 )
-from triage.llm import _model_pricing, run_triage
+from triage.llm import run_triage
 from triage.models import TriageReport
 from triage.preprocessor import enrich_with_comments, preprocess_issues
 
 _console = Console(stderr=True)
 
-_TOKENS_PER_ISSUE = 180
-_EST_OUTPUT_TOKENS = 600
-_EST_SYSTEM_TOKENS = 300
-_COST_WARNING_TOKENS = 50_000
+# Tunable bounds on cost and rate-limit behaviour.
+_COST_WARNING_TOKENS = 50_000  # input tokens above this trigger a warning
+_MAX_OUTPUT_TOKENS = (
+    8_192  # hard cap on LLM output; also the worst-case used in cost estimation
+)
+_EST_SYSTEM_TOKENS = (
+    300  # measured against the current system prompt; remeasure if it changes
+)
+_MIN_RATE_LIMIT_REMAINING = 20  # abort below this with a clear message
 
 
 def _format_count(n: int) -> str:
-    """Format a count compactly: 92,000 → '92k', 1,500,000 → '1.5m'."""
+    """Return a compact string for a non-negative count.
+
+    Args:
+        n: The count to format.
+
+    Returns:
+        A compact representation: values >= 1,000,000 render as ``"1.5m"``;
+        values >= 1,000 as ``"92k"``; smaller values are returned as plain
+        digits.
+    """
     if n >= 1_000_000:
         return f"{n / 1_000_000:.1f}m"
     if n >= 1_000:
@@ -34,35 +50,74 @@ def _format_count(n: int) -> str:
     return str(n)
 
 
+def _estimate_cost(processed: list, model: str) -> tuple[int, float]:
+    """Estimate input tokens and worst-case total cost for an LLM call.
+
+    Uses LiteLLM's model-specific tokenizer for the user payload and assumes
+    the call will hit ``_MAX_OUTPUT_TOKENS`` on output, so the returned cost
+    is a conservative upper bound rather than an expected value. Both the
+    dry-run path and the live cost-warning path call this helper so they
+    agree on the same number for the same input.
+
+    Args:
+        processed: Preprocessed issues that will be JSON-serialised as the
+            user message body.
+        model: Resolved LiteLLM model string
+            (e.g. ``"claude-sonnet-4-20250514"``).
+
+    Returns:
+        A ``(prompt_tokens, total_cost_usd)`` tuple. ``prompt_tokens``
+        includes a fixed estimate for the system prompt overhead.
+    """
+    serialized = json.dumps([p.model_dump() for p in processed])
+
+    prompt_tokens = (
+        litellm.token_counter(
+            model=model,
+            messages=[{"role": "user", "content": serialized}],
+        )
+        + _EST_SYSTEM_TOKENS
+    )
+    input_cost, output_cost = litellm.cost_per_token(
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=_MAX_OUTPUT_TOKENS,
+    )
+    return prompt_tokens, input_cost + output_cost
+
+
 def _print_dry_run(
     repo: str,
     raw_count: int,
-    processed_count: int,
+    processed: list,
     since_days: int | None,
     model: str,
 ) -> None:
     """Print a dry-run cost estimate without calling the LLM.
 
+    Uses the same ``_estimate_cost`` helper as the live warning, so the
+    quoted figure matches what the live run would produce for the same
+    input.
+
     Args:
-        repo: Repository slug (owner/repo).
-        raw_count: Number of issues fetched before the since filter.
-        processed_count: Number of issues that would be sent to the LLM.
-        since_days: The --since filter value, or None if not set.
-        model: LiteLLM model string.
+        repo: Repository slug formatted as ``"owner/repo"``.
+        raw_count: Number of issues fetched before any filtering.
+        processed: Issues that would be sent to the LLM after filtering.
+        since_days: Value of the ``--since`` flag, or None if unset.
+        model: Resolved LiteLLM model string.
     """
-    est_in = _TOKENS_PER_ISSUE * processed_count + _EST_SYSTEM_TOKENS
-    est_out = _EST_OUTPUT_TOKENS
-    pricing = _model_pricing(model)
-    est_cost = (est_in * pricing["input"] + est_out * pricing["output"]) / 1_000_000
-    filter_label = f"last {since_days} days" if since_days else "all open issues (safety cap)"
+    est_tokens, est_cost = _estimate_cost(processed, model)
+    filter_label = (
+        f"last {since_days} days" if since_days else "all open issues (safety cap)"
+    )
 
     _console.print()
     _console.print("[bold yellow]DRY RUN[/bold yellow]")
     _console.print(f"  Repo:          {repo}")
     _console.print(f"  Filter:        {filter_label}")
     _console.print(f"  Issues found:  {raw_count}")
-    _console.print(f"  After filter:  {processed_count}")
-    _console.print(f"  Est. tokens:   ~{est_in:,}")
+    _console.print(f"  After filter:  {len(processed)}")
+    _console.print(f"  Est. tokens:   ~{est_tokens:,}")
     _console.print(f"  Est. cost:     ~${est_cost:.4f}")
     _console.print(f"  Model:         {model}")
     _console.print()
@@ -75,6 +130,7 @@ def run_pipeline(
     focus: str | None = None,
     since_days: int | None = None,
     dry_run: bool = False,
+    model: str | None = None,
 ) -> TriageReport | None:
     """End-to-end triage pipeline.
 
@@ -85,6 +141,8 @@ def run_pipeline(
         focus: Optional maintainer focus directive forwarded to the LLM prompt.
         since_days: When set, only include issues created within this many days.
         dry_run: When True, skip the LLM call and print a cost estimate instead.
+        model: LiteLLM model string. Defaults to ``settings.litellm_model`` when
+            not provided.
 
     Returns:
         Validated TriageReport, or ``None`` when *dry_run* is True.
@@ -98,7 +156,7 @@ def run_pipeline(
     repo_slug = f"{owner}/{repo}"
 
     rate_info = check_rate_limit()
-    if rate_info["remaining"] < 20:
+    if rate_info["remaining"] < _MIN_RATE_LIMIT_REMAINING:
         mins = max(1, rate_info["reset_in_seconds"] // 60)
         raise RuntimeError(
             f"GitHub rate limit nearly exhausted ({rate_info['remaining']} remaining, "
@@ -115,7 +173,9 @@ def run_pipeline(
 
     _console.print(f"[dim]Fetching issues from {repo_slug}…[/dim]", end=" ")
     total_open = repo_stats.get("open_issues_count", 0)
-    raw_issues = fetch_open_issues(repo_url, max_issues=max_issues, since_days=since_days)
+    raw_issues = fetch_open_issues(
+        repo_url, max_issues=max_issues, since_days=since_days
+    )
     _console.print(f"[green]✓[/green] {len(raw_issues)} found{stars_suffix}")
 
     if not raw_issues:
@@ -177,29 +237,28 @@ def run_pipeline(
                     f"[green]✓[/green] {fetched} of {issues_with_comments} fetched"
                 )
 
-    model = settings.litellm_model
+    resolved_model = model or settings.litellm_model
 
     if dry_run:
-        _print_dry_run(repo_slug, len(raw_issues), len(processed), since_days, model)
+        _print_dry_run(
+            repo_slug, len(raw_issues), processed, since_days, resolved_model
+        )
         return None
 
-    est_tokens = len(processed) * _TOKENS_PER_ISSUE + _EST_SYSTEM_TOKENS
-    if est_tokens > _COST_WARNING_TOKENS:
-        pricing = _model_pricing(model)
-        if since_days and since_days > 1:
-            suggestion = f"try --since {max(1, since_days // 2)} to halve the window"
-        else:
-            suggestion = "try --max-issues 100 to cap the issue count"
+    prompt_tokens, total_est = _estimate_cost(processed, resolved_model)
+    if prompt_tokens > _COST_WARNING_TOKENS:
         _console.print(
-            f"[yellow]Warning: large analysis (~{est_tokens:,} tokens, est. "
-            f"${est_tokens * pricing['input'] / 1_000_000:.2f}+). "
-            f"Consider reducing scope — {suggestion}.[/yellow]"
+            f"[yellow]Warning: large analysis (~{prompt_tokens:,} input tokens, "
+            f"est. ${total_est:.2f} total worst-case). "
+            f"Consider reducing scope.[/yellow]"
         )
 
-    _console.print(f"[dim]Analysing with {model}…[/dim]")
-    t0 = time.time()
-    report = run_triage(repo_slug, processed, focus=focus, repo_stats=repo_stats)
-    elapsed = time.time() - t0
+    _console.print(f"[dim]Analysing with {resolved_model}…[/dim]")
+    t0 = time.perf_counter()
+    report = run_triage(
+        repo_slug, processed, focus=focus, repo_stats=repo_stats, model=resolved_model
+    )
+    elapsed = time.perf_counter() - t0
     _console.print(f"[dim]  ✓ done in {elapsed:.1f}s[/dim]")
 
     report.total_open_in_repo = total_open

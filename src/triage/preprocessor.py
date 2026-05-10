@@ -15,6 +15,7 @@ from triage.github import _build_headers, fetch_top_comments
 from triage.models import ProcessedIssue, RawIssue
 
 _SNIPPET_CHARS = 500
+_COMMENT_TRUNCATE = 200
 _API_BASE = "https://api.github.com"
 _TIMEOUT = 30.0
 _GOOD_FIRST_ISSUE_LABELS = frozenset(
@@ -28,24 +29,24 @@ _REPORTER_TYPE_MAP: dict[str, str] = {
 }
 
 
-def _strip_html_and_code(text: str) -> str:
-    """Remove HTML tags and fenced code blocks, then collapse whitespace.
-
-    Strips fenced and inline code blocks first so BeautifulSoup does not
-    interpret angle brackets inside code as HTML tags.
+def clean_text(text: str, truncate: int = 0) -> str:
+    """Strip HTML, fenced code blocks, and inline code, then collapse whitespace.
 
     Args:
-        text: Raw Markdown/HTML text from a GitHub issue body.
+        text: Raw Markdown/HTML text from a GitHub issue body or comment.
+        truncate: If > 0, cap output at this many characters and append ``…``.
+            Pass ``0`` (default) for no truncation.
 
     Returns:
-        Plain text with all markup removed and runs of whitespace collapsed
-        to a single space.
+        Plain text with all markup removed and whitespace collapsed.
     """
     text = re.sub(r"```[\s\S]*?```", " ", text)
     text = re.sub(r"`[^`]+`", " ", text)
-    soup = BeautifulSoup(text, "html.parser")
-    plain = soup.get_text(separator=" ")
-    return re.sub(r"\s+", " ", plain).strip()
+    plain = BeautifulSoup(text, "html.parser").get_text(separator=" ")
+    plain = re.sub(r"\s+", " ", plain).strip()
+    if 0 < truncate < len(plain):
+        return plain[:truncate] + "…"
+    return plain
 
 
 def _days_since(iso_timestamp: str) -> int:
@@ -91,11 +92,7 @@ def preprocess_issues(
 
     for issue in issues[:max_issues]:
         raw_body = issue.body or ""
-        cleaned = _strip_html_and_code(raw_body)
-        snippet = cleaned[:_SNIPPET_CHARS]
-        if len(cleaned) > _SNIPPET_CHARS:
-            snippet += "…"
-
+        cleaned_snippet = clean_text(raw_body, _SNIPPET_CHARS)
         days_old = _days_since(issue.created_at)
         days_since_update = _days_since(issue.updated_at)
 
@@ -108,7 +105,7 @@ def preprocess_issues(
             ProcessedIssue(
                 number=issue.number,
                 title=issue.title,
-                body_snippet=snippet,
+                body_snippet=cleaned_snippet,
                 created_at=issue.created_at,
                 days_old=days_old,
                 days_since_update=days_since_update,
@@ -117,9 +114,13 @@ def preprocess_issues(
                 labels=issue.labels,
                 html_url=issue.html_url,
                 is_stale=days_since_update >= stale_days,
-                has_good_first_issue_label=bool(lower_labels & _GOOD_FIRST_ISSUE_LABELS),
+                has_good_first_issue_label=bool(
+                    lower_labels & _GOOD_FIRST_ISSUE_LABELS
+                ),
                 is_assigned=issue.is_assigned,
-                reporter_type=_REPORTER_TYPE_MAP.get(issue.author_association, "community"),
+                reporter_type=_REPORTER_TYPE_MAP.get(
+                    issue.author_association, "community"
+                ),
                 milestone=issue.milestone,
             )
         )
@@ -151,7 +152,8 @@ def enrich_with_comments(
         for issue in processed:
             if issue.comment_count <= 0:
                 continue
-            comments = fetch_top_comments(client, owner, repo, issue.number)
+            raw_comments = fetch_top_comments(client, owner, repo, issue.number)
+            comments = [clean_text(c, truncate=_COMMENT_TRUNCATE) for c in raw_comments]
             if comments:
                 issue.top_comments = comments
                 fetched += 1
