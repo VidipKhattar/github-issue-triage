@@ -13,7 +13,7 @@ from triage.github import (
     fetch_repo_stats,
     parse_repo,
 )
-from triage.llm import _model_pricing, run_triage
+from triage.llm import model_pricing, run_triage
 from triage.models import TriageReport
 from triage.preprocessor import enrich_with_comments, preprocess_issues
 
@@ -52,9 +52,11 @@ def _print_dry_run(
     """
     est_in = _TOKENS_PER_ISSUE * processed_count + _EST_SYSTEM_TOKENS
     est_out = _EST_OUTPUT_TOKENS
-    pricing = _model_pricing(model)
+    pricing = model_pricing(model)
     est_cost = (est_in * pricing["input"] + est_out * pricing["output"]) / 1_000_000
-    filter_label = f"last {since_days} days" if since_days else "all open issues (safety cap)"
+    filter_label = (
+        f"last {since_days} days" if since_days else "all open issues (safety cap)"
+    )
 
     _console.print()
     _console.print("[bold yellow]DRY RUN[/bold yellow]")
@@ -75,6 +77,7 @@ def run_pipeline(
     focus: str | None = None,
     since_days: int | None = None,
     dry_run: bool = False,
+    model: str | None = None,
 ) -> TriageReport | None:
     """End-to-end triage pipeline.
 
@@ -85,6 +88,8 @@ def run_pipeline(
         focus: Optional maintainer focus directive forwarded to the LLM prompt.
         since_days: When set, only include issues created within this many days.
         dry_run: When True, skip the LLM call and print a cost estimate instead.
+        model: LiteLLM model string. Defaults to ``settings.litellm_model`` when
+            not provided.
 
     Returns:
         Validated TriageReport, or ``None`` when *dry_run* is True.
@@ -115,7 +120,9 @@ def run_pipeline(
 
     _console.print(f"[dim]Fetching issues from {repo_slug}…[/dim]", end=" ")
     total_open = repo_stats.get("open_issues_count", 0)
-    raw_issues = fetch_open_issues(repo_url, max_issues=max_issues, since_days=since_days)
+    raw_issues = fetch_open_issues(
+        repo_url, max_issues=max_issues, since_days=since_days
+    )
     _console.print(f"[green]✓[/green] {len(raw_issues)} found{stars_suffix}")
 
     if not raw_issues:
@@ -177,15 +184,17 @@ def run_pipeline(
                     f"[green]✓[/green] {fetched} of {issues_with_comments} fetched"
                 )
 
-    model = settings.litellm_model
+    resolved_model = model or settings.litellm_model
 
     if dry_run:
-        _print_dry_run(repo_slug, len(raw_issues), len(processed), since_days, model)
+        _print_dry_run(
+            repo_slug, len(raw_issues), len(processed), since_days, resolved_model
+        )
         return None
 
     est_tokens = len(processed) * _TOKENS_PER_ISSUE + _EST_SYSTEM_TOKENS
     if est_tokens > _COST_WARNING_TOKENS:
-        pricing = _model_pricing(model)
+        pricing = model_pricing(resolved_model)
         if since_days and since_days > 1:
             suggestion = f"try --since {max(1, since_days // 2)} to halve the window"
         else:
@@ -196,9 +205,11 @@ def run_pipeline(
             f"Consider reducing scope — {suggestion}.[/yellow]"
         )
 
-    _console.print(f"[dim]Analysing with {model}…[/dim]")
+    _console.print(f"[dim]Analysing with {resolved_model}…[/dim]")
     t0 = time.time()
-    report = run_triage(repo_slug, processed, focus=focus, repo_stats=repo_stats)
+    report = run_triage(
+        repo_slug, processed, focus=focus, repo_stats=repo_stats, model=resolved_model
+    )
     elapsed = time.time() - t0
     _console.print(f"[dim]  ✓ done in {elapsed:.1f}s[/dim]")
 

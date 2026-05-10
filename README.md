@@ -26,11 +26,17 @@ triage microsoft/vscode --since 7
 # Focus on specific concerns
 triage pallets/flask --since 14 --focus "security and auth issues"
 
+triage langchain-ai/langchain --since 14 --focus "security and auth issues"
+
 # Preview without calling the LLM
 triage pydantic/pydantic --since 30 --dry-run
 
 # JSON output
 triage astral-sh/ruff --since 30 --output json
+
+# Use a different provider
+triage psf/requests --since 14 --provider gpt
+triage psf/requests --since 14 --provider gemini
 ```
 
 > **Tip:** Use `--since` to control scope naturally.
@@ -39,39 +45,48 @@ triage astral-sh/ruff --since 30 --output json
 
 ## Flags
 
-| Flag                  | Default | Description                                                                                              |
-| --------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| `--since`             | `7`     | Only analyse issues created in the last N days. Recommended: `7` for large repos, `30` for smaller ones. |
-| `--focus` / `-f`      | —       | Plain-English priority directive injected into the LLM prompt                                            |
-| `--dry-run`           | `false` | Skip the LLM call; print token and cost estimates instead                                                |
-| `--output` / `-o`     | `table` | `table` (Rich) or `json`                                                                                 |
-| `--stale-days` / `-s` | `90`    | Days without update before flagging stale                                                                |
+| Flag                  | Default  | Description                                                                                              |
+| --------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `--since`             | `7`      | Only analyse issues created in the last N days. Recommended: `7` for large repos, `30` for smaller ones. |
+| `--focus` / `-f`      | —        | Plain-English priority directive injected into the LLM prompt                                            |
+| `--provider` / `-p`   | `claude` | LLM provider: `claude`, `gpt`, or `gemini`                                                               |
+| `--dry-run`           | `false`  | Skip the LLM call; print token and cost estimates instead                                                |
+| `--output` / `-o`     | `table`  | `table` (Rich) or `json`                                                                                 |
+| `--stale-days` / `-s` | `90`     | Days without update before flagging stale                                                                |
 
 ## Configuration
 
-| Variable            | Required                                 | Description                                        |
-| ------------------- | ---------------------------------------- | -------------------------------------------------- |
-| `LITELLM_MODEL`     | No (default: `claude-sonnet-4-20250514`) | LiteLLM model string — controls provider and model |
-| `ANTHROPIC_API_KEY` | Yes (if using Anthropic models)          | Your Anthropic API key                             |
-| `OPENAI_API_KEY`    | Yes (if using OpenAI models)             | Your OpenAI API key                                |
-| `GITHUB_TOKEN`      | Recommended                              | PAT — raises rate limit from 60 to 5,000 req/hr    |
+| Variable            | Required                | Description                                     |
+| ------------------- | ----------------------- | ----------------------------------------------- |
+| `DEFAULT_PROVIDER`  | No (default: `claude`)  | Active provider when `--provider` is not passed |
+| `MODEL_CLAUDE`      | No (default: see below) | Anthropic model used when provider is `claude`  |
+| `MODEL_OPENAI`      | No (default: see below) | OpenAI model used when provider is `gpt`        |
+| `MODEL_GEMINI`      | No (default: see below) | Google model used when provider is `gemini`     |
+| `ANTHROPIC_API_KEY` | Yes (if using `claude`) | Your Anthropic API key                          |
+| `OPENAI_API_KEY`    | Yes (if using `gpt`)    | Your OpenAI API key                             |
+| `GEMINI_API_KEY`    | Yes (if using `gemini`) | Your Google AI Studio API key                   |
+| `GITHUB_TOKEN`      | Recommended             | PAT — raises rate limit from 60 to 5,000 req/hr |
 
-### Switching models
+### Switching providers
 
-Change `LITELLM_MODEL` in your `.env` — no code changes required:
+Pass `--provider` at runtime — no `.env` changes needed:
+
+```bash
+triage psf/requests --since 14 --provider claude
+triage psf/requests --since 14 --provider gpt
+triage psf/requests --since 14 --provider gemini
+```
+
+To change the default, set `DEFAULT_PROVIDER` in `.env`. To change which specific model a provider uses, set the corresponding variable:
 
 ```
-# Anthropic
-LITELLM_MODEL=claude-sonnet-4-20250514
-LITELLM_MODEL=claude-opus-4-20250514
-
-# OpenAI
-LITELLM_MODEL=gpt-4o
-LITELLM_MODEL=gpt-4o-mini
-
-# Gemini
-LITELLM_MODEL=gemini/gemini-1.5-pro
+# Defaults — override in .env to change the model without touching code
+MODEL_CLAUDE=claude-sonnet-4-20250514   # or claude-opus-4-20250514
+MODEL_OPENAI=gpt-4o                     # or gpt-4o-mini
+MODEL_GEMINI=gemini/gemini-1.5-pro      # or gemini/gemini-2.0-flash
 ```
+
+All routing goes through [LiteLLM](https://docs.litellm.ai) — the provider flag simply resolves to the appropriate model string.
 
 ### Tuning scope via `.env`
 

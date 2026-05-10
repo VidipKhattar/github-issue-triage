@@ -54,10 +54,16 @@ def run(
         int,
         typer.Option("--stale-days", "-s", help="Days without update before flagging stale."),
     ] = 90,
-    # Switch models by changing LITELLM_MODEL in your .env:
-    #   Anthropic: claude-sonnet-4-20250514, claude-opus-4-20250514
-    #   OpenAI:    gpt-4o, gpt-4o-mini
-    #   Gemini:    gemini/gemini-1.5-pro
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            "-p",
+            help="LLM provider: 'claude' (default), 'gpt', or 'gemini'. "
+            "Set the specific model per provider via MODEL_CLAUDE / "
+            "MODEL_OPENAI / MODEL_GEMINI in your .env.",
+        ),
+    ] = None,
     max_issues: Annotated[
         int,
         typer.Option("--max-issues", "-n", hidden=True),
@@ -70,6 +76,13 @@ def run(
 
     since_days = since if since is not None else settings.since_default
 
+    resolved_provider = (provider or settings.default_provider).lower()
+    try:
+        model = settings.model_for_provider(resolved_provider)
+    except ValueError as exc:
+        _err.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
     try:
         report = run_pipeline(
             repo_url,
@@ -78,6 +91,7 @@ def run(
             focus=focus,
             since_days=since_days,
             dry_run=dry_run,
+            model=model,
         )
     except (OSError, ValueError) as exc:
         _err.print(f"[red]Error:[/red] {exc}")

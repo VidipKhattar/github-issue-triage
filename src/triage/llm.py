@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import tenacity
 
 os.environ["LITELLM_TELEMETRY"] = "False"
 
 import litellm  # noqa: E402
+
+litellm.num_retries = 3
 from rich.console import Console
 
 from triage.config import settings
@@ -18,7 +21,8 @@ from triage.preprocessor import issues_to_llm_payload
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _console = Console(stderr=True)
 
-def _model_pricing(model: str) -> dict[str, float]:
+
+def model_pricing(model: str) -> dict[str, float]:
     """Return per-million-token pricing using LiteLLM's maintained cost database.
 
     Falls back to Sonnet-class pricing for models not in LiteLLM's database.
@@ -99,7 +103,6 @@ def complete(model: str, system: str, user: str) -> tuple[str, object, float]:
 
     Raises:
         litellm.exceptions.AuthenticationError: If the API key is invalid.
-        litellm.exceptions.RateLimitError: If the rate limit is exceeded.
         ValueError: If the response cannot be parsed.
     """
     response = litellm.completion(
@@ -109,7 +112,7 @@ def complete(model: str, system: str, user: str) -> tuple[str, object, float]:
             {"role": "user", "content": user},
         ],
         max_tokens=8192,
-        num_retries=3,
+        num_retries=0,
     )
     cost = litellm.completion_cost(completion_response=response)
     return response.choices[0].message.content, response.usage, cost
@@ -146,6 +149,7 @@ def run_triage(
     issues: list[ProcessedIssue],
     focus: str | None = None,
     repo_stats: dict | None = None,
+    model: str | None = None,
 ) -> TriageReport:
     """Call the LLM and return a validated TriageReport.
 
@@ -163,7 +167,7 @@ def run_triage(
         ValueError: If the LLM returns malformed JSON.
         pydantic.ValidationError: If the JSON does not match the schema.
     """
-    model = settings.litellm_model
+    model = model or settings.litellm_model
     schema = TriageReport.model_json_schema()
     schema.get("properties", {}).pop("total_open_in_repo", None)
     system = _load_system_prompt(schema, focus)
